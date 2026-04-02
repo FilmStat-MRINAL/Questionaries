@@ -16,30 +16,37 @@ st.markdown("Enter Day 1 release plans using the State-Only logic.")
 # --- DATA LOADING & TALENT RESOLUTION ---
 import requests
 import io
-
 @st.cache_data
 def load_and_resolve_talent():
-    # Direct download format for Google Drive
-    # confirm=t helps bypass potential virus scan confirmation pages for small files
-    # Fetch IDs from Streamlit's private "Secrets" manager
-    DIR_ID = st.secrets["DIR_ID"]
-    CAST_ID = st.secrets["CAST_ID"]
-    
-    DIR_URL = f"https://drive.google.com/uc?export=download&id={DIR_ID}&confirm=t"
-    CAST_URL = f"https://drive.google.com/uc?export=download&id={CAST_ID}&confirm=t"
+    if "DIR_ID" not in st.secrets or "CAST_ID" not in st.secrets:
+        st.error("Secrets missing! Add DIR_ID and CAST_ID in Streamlit Settings.")
+        return ["Secrets Missing"], ["Secrets Missing"]
+
+    def download_file_from_google_drive(id):
+        URL = "https://docs.google.com/uc?export=download"
+        session = requests.Session()
+        # First request to get the confirmation token
+        response = session.get(URL, params={'id': id}, stream=True)
+        token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                token = value
+                break
+        
+        # Second request with the token
+        if token:
+            response = session.get(URL, params={'id': id, 'confirm': token}, stream=True)
+        
+        return response.content
 
     try:
-        # Stream from Drive into RAM
-        dir_res = requests.get(DIR_URL)
-        cast_res = requests.get(CAST_URL)
-        
-        # Verify if the download was successful
-        if dir_res.status_code != 200 or cast_res.status_code != 200:
-            st.error("Failed to fetch data from Drive. Check if permissions are set to 'Anyone with link'.")
-            return ["Data Not Found"], ["Data Not Found"]
+        # Download binary data into RAM
+        dir_content = download_file_from_google_drive(st.secrets["DIR_ID"])
+        cast_content = download_file_from_google_drive(st.secrets["CAST_ID"])
 
-        df_dir = pd.read_pickle(io.BytesIO(dir_res.content))
-        df_cast = pd.read_pickle(io.BytesIO(cast_res.content))
+        # Load from memory buffer
+        df_dir = pd.read_pickle(io.BytesIO(dir_content))
+        df_cast = pd.read_pickle(io.BytesIO(cast_content))
 
         # --- Your existing logic ---
         def get_final_id(df):
@@ -53,8 +60,6 @@ def load_and_resolve_talent():
 
         # Process Directors
         df_dir["final_person_id"] = get_final_id(df_dir)
-        # Create "Name (ID)" string. We group by ID to ensure uniqueness.
-        # We take the first name encountered for that ID.
         dir_unique = df_dir.groupby("final_person_id")["Director_name"].first().reset_index()
         dir_options = (dir_unique["Director_name"] + " (" + dir_unique["final_person_id"] + ")").tolist()
 
