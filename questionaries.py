@@ -63,7 +63,7 @@ def load_and_resolve_talent():
 
 DIR_OPTIONS, CAST_OPTIONS = load_and_resolve_talent()
 
-# Helper function to resolve IDs from dropdown strings
+# Helper function to resolve IDs from strings
 def extract_id(entry):
     if entry and "(" in entry:
         return entry.split("(")[-1].strip(")")
@@ -109,8 +109,13 @@ with st.expander("2. Talent Profiles", expanded=True):
         if is_new_c:
             c_name = c1.text_input(f"Enter Name for Cast {i}", key=f"name_c_{i}")
             c_id = c1.text_input(f"ID for Cast {i}", placeholder="nm...", key=f"id_c_{i}")
+            if c_id and c_id.startswith("nm"):
+                st.markdown(f"🔗 [Verify Cast {i} on IMDb](https://www.imdb.com/name/{c_id}/)")
         else:
             c_name = c1.selectbox(f"Search Resolved Cast {i}", [""] + CAST_OPTIONS, key=f"select_c_{i}")
+            if c_name and "(" in c_name:
+                extracted_c_id = extract_id(c_name)
+                st.markdown(f"✅ **Verify Cast {i}:** [View Profile](https://www.imdb.com/name/{extracted_c_id}/)")
         
         if c_name:
             selected_cast_entries.append({"name": c_name, "is_new": is_new_c, "manual_id": c_id if is_new_c else None})
@@ -128,7 +133,7 @@ if selected_states:
 # --- SECTION 4: COMPETITOR LANDSCAPE ---
 st.divider()
 st.subheader("4. Competitor Landscape")
-st.caption("Providing details for competitors helps the model calculate 'Competition Quality'. If details are unknown, just providing the name and shows is fine.")
+st.caption("Optional: Providing details for competitors helps the model calculate 'Competition Quality'.")
 
 num_competitors = st.number_input("Number of major competitor movies:", min_value=0, max_value=5, step=1)
 
@@ -143,17 +148,39 @@ for i in range(int(num_competitors)):
         
         comp_info['genres'] = st.multiselect(f"Genres (Max 3)", ALL_GENRES, max_selections=3, key=f"cg_{i}")
         
-        # Competitor Talent
-        t1, t2 = st.columns(2)
-        comp_info['director'] = t1.selectbox("Director", [""] + DIR_OPTIONS, key=f"cdir_{i}", help="Search or leave blank if unknown")
-        comp_info['cast'] = t2.multiselect("Top Cast", CAST_OPTIONS, key=f"ccast_{i}", max_selections=5)
+        # Competitor Director
+        st.markdown("**Competitor Talent**")
+        d_col1, d_col2 = st.columns([3, 1])
+        c_is_new_dir = d_col2.checkbox("Director not in list", key=f"c_new_dir_{i}")
+        if c_is_new_dir:
+            comp_info['director'] = d_col1.text_input("Director Name", key=f"c_dir_name_{i}")
+            c_dir_id = d_col1.text_input("IMDb ID", placeholder="nm...", key=f"c_dir_id_{i}")
+            if c_dir_id.startswith("nm"):
+                st.markdown(f"🔗 [Verify Director on IMDb](https://www.imdb.com/name/{c_dir_id}/)")
+        else:
+            comp_info['director'] = d_col1.selectbox("Director", [""] + DIR_OPTIONS, key=f"c_dir_sel_{i}")
+            if comp_info['director'] and "(" in comp_info['director']:
+                st.markdown(f"🔗 [Verify IMDb Profile](https://www.imdb.com/name/{extract_id(comp_info['director'])}/)")
 
-        st.markdown(f"**Estimated Shows in selected states:**")
+        # Competitor Cast (5 members)
+        comp_info['cast_ids'] = []
+        for j in range(1, 6):
+            cast_col1, cast_col2 = st.columns([3, 1])
+            c_is_new_cast = cast_col2.checkbox(f"Actor {j} not in list", key=f"c_new_cast_{i}_{j}")
+            if c_is_new_cast:
+                c_c_name = cast_col1.text_input(f"Actor {j} Name", key=f"c_cast_name_{i}_{j}")
+                c_c_id = cast_col1.text_input(f"Actor {j} ID", placeholder="nm...", key=f"c_cast_id_{i}_{j}")
+                comp_info['cast_ids'].append(c_c_id if c_c_id else np.nan)
+            else:
+                c_c_sel = cast_col1.selectbox(f"Actor {j}", [""] + CAST_OPTIONS, key=f"c_cast_sel_{i}_{j}")
+                comp_info['cast_ids'].append(extract_id(c_c_sel))
+
+        st.markdown("**Estimated Shows in selected states:**")
         c_shows = {}
         if selected_states:
-            c_show_cols = st.columns(len(selected_states))
+            c_show_cols = st.columns(3)
             for idx, state in enumerate(selected_states):
-                c_shows[state] = c_show_cols[idx].number_input(f"{state}", min_value=0, key=f"cs_{i}_{state}")
+                c_shows[state] = c_show_cols[idx % 3].number_input(f"{state} shows", min_value=0, key=f"cs_{i}_{state}")
         comp_info['shows'] = c_shows
         competitor_list.append(comp_info)
 
@@ -171,19 +198,6 @@ if st.button("Finalize Inputs for Model"):
         main_cast_ids.append(cid)
     while len(main_cast_ids) < 5: main_cast_ids.append(np.nan)
 
-    # 3. Resolve Competitor Data
-    processed_competitors = []
-    for c in competitor_list:
-        processed_competitors.append({
-            "name": c['name'],
-            "primary_lang": c['lang'],
-            "release_date": c['rel_date'],
-            "genres": c['genres'],
-            "director_id": extract_id(c['director']),
-            "cast_ids": [extract_id(cast_name) for cast_name in c['cast']],
-            "shows": c['shows']
-        })
-
     # Build the final DataFrame
     data_dict = {
         "movie_name": movie_name,
@@ -194,7 +208,7 @@ if st.button("Finalize Inputs for Model"):
         "director_id": main_dir_id,
         **{f"cast_{i+1}_id": main_cast_ids[i] for i in range(5)},
         "user_show_distribution": [show_data],
-        "competition_details": [processed_competitors]
+        "competition_details": [competitor_list]
     }
     final_df = pd.DataFrame(data_dict)
     
