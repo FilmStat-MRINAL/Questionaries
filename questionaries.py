@@ -192,7 +192,7 @@ if st.button("Finalize Inputs for Model"):
     st.markdown("### 📋 Final Data Payload")
     
     col_a, col_b = st.columns(2)
-    with col_a:-
+    with col_a:
         st.write("**Director Mapping:**")
         st.write(f"Name: {final_director_name}")
         st.write(f"ID: {final_director_id}")
