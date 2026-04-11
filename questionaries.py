@@ -75,7 +75,19 @@ with st.expander("1. General Information", expanded=True):
     movie_name = col1.text_input("Movie Name", placeholder="e.g. Pushpa 2")
     primary_lang = col2.selectbox("Primary Language (Original)", ALL_LANGS)
     release_date = col3.date_input("Target Release Date", min_value=date.today())
+    st.divider()
     
+    # New Questions Block
+    q_col1, q_col2, q_col3 = st.columns(3)
+    is_rerelease = q_col1.radio("Is it a re-release of an old movie?", ["No", "Yes"], horizontal=True)
+    proposed_budget = q_col2.number_input("Proposed Budget (in Crores)", min_value=0.0, step=1.0)
+    is_remake = q_col3.checkbox("Is it a Remake from another language?")
+    
+    original_remake_lang = ""
+    if is_remake:
+        original_remake_lang = q_col3.selectbox("Original Language of the movie:", [""] + ALL_LANGS)
+
+    st.divider()    
     st.markdown("**Genre Selection (Maximum 3)**")
     selected_genres = st.multiselect("Select genres:", ALL_GENRES, max_selections=3)
     
