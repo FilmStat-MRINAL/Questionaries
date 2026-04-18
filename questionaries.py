@@ -69,6 +69,35 @@ def extract_id(entry):
         return entry.split("(")[-1].strip(")")
     return np.nan
 
+# Function for pushing the input data to GitHub repository
+import base64
+from datetime import datetime
+
+def push_to_github(df, movie_name):
+    token = st.secrets["GITHUB_TOKEN"]
+    repo = st.secrets["REPO_NAME"]
+    
+    # Filename: e.g., pushpa_2_20260418_2145.csv
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    safe_name = movie_name.replace(" ", "_").lower()
+    file_path = f"data_submissions/{safe_name}_{timestamp}.csv"
+    
+    # Convert DF to CSV string
+    csv_content = df.to_csv(index=False)
+    # Encode to Base64 (GitHub requirement)
+    encoded_content = base64.b64encode(csv_content.encode()).decode()
+
+    url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+    headers = {"Authorization": f"token {token}", "Content-Type": "application/json"}
+    payload = {
+        "message": f"New submission for {movie_name}",
+        "content": encoded_content,
+        "branch": "main"
+    }
+
+    res = requests.put(url, headers=headers, json=payload)
+    return res
+
 # --- SECTION 1: MOVIE IDENTITY ---
 with st.expander("1. General Information", expanded=True):
     col1, col2, col3 = st.columns(3)
@@ -203,49 +232,60 @@ for i in range(int(num_competitors)):
 
 # --- SUBMISSION ---
 if st.button("Finalize Inputs for Model"):
-    st.success("Syncing inputs with Feature Engineering Pipeline...")
-    
-    # --- 1. SYNC DIRECTORS (Extract from the list of entries) ---
-    # We iterate through the director_entries list created in the Section 2 loop
-    final_director_list = []
-    final_director_list = [d_entry["id"] for d_entry in director_entries if pd.notna(d_entry["id"]) and d_entry["id"] != ""]
-    
-    # --- 2. SYNC CAST (Convert to List format with Rank) ---
-    # Using the main_cast_list logic to match your pipeline's needs
-    final_cast_list = []
-    for entry in selected_cast_entries:
-        cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
-        if pd.notna(cid):
-            final_cast_list.append(cid)
+    if not movie_name:
+        st.error("Please enter a Movie Name before finalizing.")
+    else:
+        st.success("Syncing inputs with Feature Engineering Pipeline...")
+        
+        # --- 1. SYNC DIRECTORS ---
+        final_director_list = [d_entry["id"] for d_entry in director_entries if pd.notna(d_entry["id"]) and d_entry["id"] != ""]    
 
-    # --- 3. SYNC DATES ---
-    # Convert Streamlit date to pandas datetime for "cutoff" calculations
-    pd_release_date = pd.to_datetime(release_date)
+        # --- 2. SYNC CAST (Convert to List format with Rank) ---
+        # Using the main_cast_list logic to match your pipeline's needs
+        final_cast_list = []
+        for entry in selected_cast_entries:
+            cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
+            if pd.notna(cid):
+                final_cast_list.append(cid)
 
-    # --- 4. BUILD PIPELINE-READY DICTIONARY ---
-    # This matches the schema expected by your Feature Engineering script
-    pipeline_input_dict = {
-        "movie_name": [movie_name],
-        "primary_lang": [primary_lang],
-        "min_date": [pd_release_date], 
-        "release_date": [pd_release_date],
-        "Director_list": [final_director_list], 
-        "Cast_list": [final_cast_list],     
-        "Genres": [selected_genres],
-        "budget_crores": [proposed_budget],
-        "is_rerelease": [is_rerelease == "Yes"],
-        "is_remake": [is_remake],
-        "movie_plot": [movie_plot],
-        # Distribution Data for State-Only Logic
-        "user_show_distribution": [show_data],
-        "competition_details": [competitor_list]
-    }
+        # --- 3. SYNC DATES ---
+        # Convert Streamlit date to pandas datetime for "cutoff" calculations
+        pd_release_date = pd.to_datetime(release_date)
+
+        # --- 4. BUILD PIPELINE-READY DICTIONARY ---
+        # This matches the schema expected by your Feature Engineering script
+        pipeline_input_dict = {
+            "movie_name": [movie_name],
+            "primary_lang": [primary_lang],
+            "min_date": [pd_release_date], 
+            "release_date": [pd_release_date],
+            "Director_list": [final_director_list], 
+            "Cast_list": [final_cast_list],     
+            "Genres": [selected_genres],
+            "budget_crores": [proposed_budget],
+            "is_rerelease": [is_rerelease == "Yes"],
+            "is_remake": [is_remake],
+            "movie_plot": [movie_plot],
+            # Distribution Data for State-Only Logic
+            "user_show_distribution": [show_data],
+            "competition_details": [competitor_list]
+        }
     
-    sync_df = pd.DataFrame(pipeline_input_dict)
+        sync_df = pd.DataFrame(pipeline_input_dict)
     
-    # Store in session state for the model run
-    st.session_state['pipeline_ready_df'] = sync_df
-    
-    st.markdown("### ✅ Pipeline Sync Complete")
-    st.info("The data is now formatted with 'Director_list' and 'Cast_list' for the XGBoost Feature Engineering pipeline.")
-    st.dataframe(sync_df)
+        # --- 5. PUSH TO GITHUB ---
+        with st.spinner("Archiving data to GitHub for processing..."):
+            try:
+                repo_response = push_to_github(sync_df, movie_name)
+                if repo_response.status_code in [200, 201]:
+                    st.balloons()
+                    st.success(f"✅ Data for '{movie_name}' successfully sent to the repository!")
+                    st.info("The Data Science team will now process this for prediction.")
+                else:
+                    st.error(f"GitHub Sync Failed: {repo_response.json().get('message', 'Unknown Error')}")
+            except Exception as e:
+                st.error(f"An error occurred during upload: {e}")
+        
+        st.markdown("### 📋 Preview of Data Sent")
+        st.dataframe(sync_df)
+
