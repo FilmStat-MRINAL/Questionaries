@@ -205,43 +205,37 @@ for i in range(int(num_competitors)):
 if st.button("Finalize Inputs for Model"):
     st.success("Syncing inputs with Feature Engineering Pipeline...")
     
-# --- 1. SYNC DIRECTOR (Convert to List format) ---
-    main_dir_id = dir_id_input if is_new_dir else extract_id(director_input)
-    # Pipeline expects a list: [id1, id2]
-    director_list = [main_dir_id] if pd.notna(main_dir_id) else []
+    # --- 1. SYNC DIRECTORS (Extract from the list of entries) ---
+    # We iterate through the director_entries list created in the Section 2 loop
+    final_director_list = []
+    final_director_list = [d_entry["id"] for d_entry in director_entries if pd.notna(d_entry["id"]) and d_entry["id"] != ""]
     
-    # 2. Resolve Main Cast IDs
-    main_cast_ids = []
-    for entry in selected_cast_entries:
-        cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
-        main_cast_ids.append(cid)
-    while len(main_cast_ids) < 5: main_cast_ids.append(np.nan)
-
     # --- 2. SYNC CAST (Convert to List format with Rank) ---
-    # The index in the list to imply rank of the cast in the movie
-    main_cast_list = []
+    # Using the main_cast_list logic to match your pipeline's needs
+    final_cast_list = []
     for entry in selected_cast_entries:
         cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
         if pd.notna(cid):
-            main_cast_list.append(cid)
+            final_cast_list.append(cid)
 
     # --- 3. SYNC DATES ---
     # Convert Streamlit date to pandas datetime for "cutoff" calculations
     pd_release_date = pd.to_datetime(release_date)
 
     # --- 4. BUILD PIPELINE-READY DICTIONARY ---
-    # This dictionary exactly matches the columns in your 'movie_summary' logic
+    # This matches the schema expected by your Feature Engineering script
     pipeline_input_dict = {
         "movie_name": [movie_name],
         "primary_lang": [primary_lang],
-        "min_date": [pd_release_date], # Synced naming
+        "min_date": [pd_release_date], 
         "release_date": [pd_release_date],
-        "Director_list": [director_list], # Synced naming
-        "Cast_list": [main_cast_list],     # Synced naming
+        "Director_list": [final_director_list], 
+        "Cast_list": [final_cast_list],     
         "Genres": [selected_genres],
         "budget_crores": [proposed_budget],
         "is_rerelease": [is_rerelease == "Yes"],
         "is_remake": [is_remake],
+        "movie_plot": [movie_plot],
         # Distribution Data for State-Only Logic
         "user_show_distribution": [show_data],
         "competition_details": [competitor_list]
@@ -249,9 +243,9 @@ if st.button("Finalize Inputs for Model"):
     
     sync_df = pd.DataFrame(pipeline_input_dict)
     
-    # Store in session state for the next script
+    # Store in session state for the model run
     st.session_state['pipeline_ready_df'] = sync_df
     
     st.markdown("### ✅ Pipeline Sync Complete")
-    st.info("The data is now formatted to trigger `get_past_movies_for_directors` and `get_past_movies_for_casts` functions.")
+    st.info("The data is now formatted with 'Director_list' and 'Cast_list' for the XGBoost Feature Engineering pipeline.")
     st.dataframe(sync_df)
