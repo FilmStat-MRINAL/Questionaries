@@ -221,6 +221,7 @@ for i in range(int(num_competitors)):
                     st.markdown(f"🔗 [Verify Actor {j} on IMDb](https://www.imdb.com/name/{c_c_id}/)")
             else:
                 c_c_sel = cast_col1.selectbox(f"Actor {j}", [""] + CAST_OPTIONS, key=f"c_cast_sel_{i}_{j}")
+                extracted_c_id = extract_id(c_c_sel)
                 comp_info['cast_ids'].append(extract_id(c_c_sel))
                 if c_c_sel:
                     st.markdown(f"🔗 [Verify Actor {j} on IMDb](https://www.imdb.com/name/{extracted_c_id}/)")
