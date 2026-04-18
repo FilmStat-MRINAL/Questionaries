@@ -1,0 +1,3 @@
+movie_name,primary_lang,min_date,release_date,Director_list,Cast_list,Genres,budget_crores,is_rerelease,is_remake,movie_plot,user_show_distribution,competition_details
+Dhurandhar,Hindi,2026-04-18,2026-04-18,['nm2336554'],"['nm3828984', 'nm0451379', 'nm0004569', 'nm0992000', 'nm0534856']","['Action', 'Crime', 'Drama']",100.0,False,False,"A Propaganda Movie.
+","{'Delhi': 100, 'Andhra Pradesh': 50, 'Assam': 25}","[{'name': 'Bhooth Bangla', 'lang': 'Hindi', 'rel_date': datetime.date(2026, 4, 16), 'genres': ['Comedy', 'Horror'], 'director': 'Priyadarshan (nm0698184)', 'cast_ids': ['nm0474774', 'nm0712546', 'nm0007102', nan, nan], 'shows': {'Delhi': 50, 'Andhra Pradesh': 25, 'Assam': 10}}]"
