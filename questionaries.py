@@ -98,21 +98,26 @@ with st.expander("1. General Information", expanded=True):
 with st.expander("2. Talent Profiles", expanded=True):
     st.info("💡 Verify identity via the IMDb link below your selection.")
     
-    st.markdown("#### Director(s)")
-    is_new_dir = st.checkbox("Director not in the drop-down?")
-    if is_new_dir:
-        director_input = st.text_input("Enter Director Name")
-        dir_id_input = st.text_input("Enter IMDb ID (if possible)", placeholder="nm...", key="main_dir_id")
-        if dir_id_input.startswith("nm"):
-            st.markdown(f"🔗 [View Profile on IMDb](https://www.imdb.com/name/{dir_id_input}/)")
-    else:
-        director_input = st.selectbox("Search Resolved Directors", [""] + DIR_OPTIONS, key="main_dir_select")
-        if director_input and "(" in director_input:
-            extracted_id = extract_id(director_input)
-            st.markdown(f"✅ **Verify Talent:** [View IMDb Page](https://www.imdb.com/name/{extracted_id}/)")
+    st.markdown("#### Director(s) - Maximum 2")
+    director_entries = []
+    for i in range(1, 3):
+        d_col1, d_col2 = st.columns([3, 1])
+        is_new_dir = d_col2.checkbox(f"Director {i} not in list", key=f"new_d_{i}")
+        if is_new_dir:
+            d_name = d_col1.text_input(f"Director {i} Name", key=f"name_d_{i}")
+            d_id = d_col1.text_input(f"Director {i} IMDb ID", placeholder="nm...", key=f"id_d_{i}")
+            if d_id and d_id.startswith("nm"):
+                st.markdown(f"🔗 [Verify Director {i} on IMDb](https://www.imdb.com/name/{d_id}/)")
+            director_entries.append({"id": d_id if d_id else np.nan, "is_new": True})
+        else:
+            d_sel = d_col1.selectbox(f"Search Director {i}", [""] + DIR_OPTIONS, key=f"select_d_{i}")
+            if d_sel:
+                extracted_id = extract_id(d_sel)
+                st.markdown(f"🔗 [Verify Director {i} on IMDb](https://www.imdb.com/name/{extracted_id}/)")
+                director_entries.append({"id": extracted_id, "is_new": False})
 
     st.divider()
-
+    
     st.markdown("#### Top 5 Cast Members (In order of importance)")
     selected_cast_entries = []
     for i in range(1, 6):
@@ -198,10 +203,12 @@ for i in range(int(num_competitors)):
 
 # --- SUBMISSION ---
 if st.button("Finalize Inputs for Model"):
-    st.success("Processing inputs...")
+    st.success("Syncing inputs with Feature Engineering Pipeline...")
     
-    # 1. Resolve Main Director ID
+# --- 1. SYNC DIRECTOR (Convert to List format) ---
     main_dir_id = dir_id_input if is_new_dir else extract_id(director_input)
+    # Pipeline expects a list: [id1, id2]
+    director_list = [main_dir_id] if pd.notna(main_dir_id) else []
     
     # 2. Resolve Main Cast IDs
     main_cast_ids = []
@@ -210,20 +217,41 @@ if st.button("Finalize Inputs for Model"):
         main_cast_ids.append(cid)
     while len(main_cast_ids) < 5: main_cast_ids.append(np.nan)
 
-    # Build the final DataFrame
-    data_dict = {
-        "movie_name": movie_name,
-        "primary_lang": primary_lang,
-        "release_date": release_date,
-        "genres": [selected_genres],
-        "plot": movie_plot,
-        "director_id": main_dir_id,
-        **{f"cast_{i+1}_id": main_cast_ids[i] for i in range(5)},
+    # --- 2. SYNC CAST (Convert to List format with Rank) ---
+    # The index in the list to imply rank of the cast in the movie
+    main_cast_list = []
+    for entry in selected_cast_entries:
+        cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
+        if pd.notna(cid):
+            main_cast_list.append(cid)
+
+    # --- 3. SYNC DATES ---
+    # Convert Streamlit date to pandas datetime for "cutoff" calculations
+    pd_release_date = pd.to_datetime(release_date)
+
+    # --- 4. BUILD PIPELINE-READY DICTIONARY ---
+    # This dictionary exactly matches the columns in your 'movie_summary' logic
+    pipeline_input_dict = {
+        "movie_name": [movie_name],
+        "primary_lang": [primary_lang],
+        "min_date": [pd_release_date], # Synced naming
+        "release_date": [pd_release_date],
+        "Director_list": [director_list], # Synced naming
+        "Cast_list": [main_cast_list],     # Synced naming
+        "Genres": [selected_genres],
+        "budget_crores": [proposed_budget],
+        "is_rerelease": [is_rerelease == "Yes"],
+        "is_remake": [is_remake],
+        # Distribution Data for State-Only Logic
         "user_show_distribution": [show_data],
         "competition_details": [competitor_list]
     }
-    final_df = pd.DataFrame(data_dict)
     
-    st.session_state['final_df'] = final_df
-    st.markdown("### 📋 Final Data Payload Prepared")
-    st.dataframe(final_df)
+    sync_df = pd.DataFrame(pipeline_input_dict)
+    
+    # Store in session state for the next script
+    st.session_state['pipeline_ready_df'] = sync_df
+    
+    st.markdown("### ✅ Pipeline Sync Complete")
+    st.info("The data is now formatted to trigger `get_past_movies_for_directors` and `get_past_movies_for_casts` functions.")
+    st.dataframe(sync_df)
