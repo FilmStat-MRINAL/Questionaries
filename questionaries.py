@@ -73,19 +73,25 @@ def extract_id(entry):
 import base64
 from datetime import datetime
 
+import io
+
 def push_to_github(df, movie_name):
     token = st.secrets["GITHUB_TOKEN"]
     repo = st.secrets["REPO_NAME"]
     
-    # Filename: e.g., pushpa_2_20260418_2145.csv
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     safe_name = movie_name.replace(" ", "_").lower()
-    file_path = f"data_submissions/{safe_name}_{timestamp}.csv"
+    file_path = f"data_submissions/{safe_name}_{timestamp}.parquet"
     
-    # Convert DF to CSV string
-    csv_content = df.to_csv(index=False)
-    # Encode to Base64 (GitHub requirement)
-    encoded_content = base64.b64encode(csv_content.encode()).decode()
+    # 1. Create a binary buffer
+    buffer = io.BytesIO()
+    # 2. Write the dataframe to the buffer as parquet
+    df.to_parquet(buffer, index=False)
+    # 3. Get the binary content
+    parquet_binary = buffer.getvalue()
+    
+    # 4. Encode binary to Base64
+    encoded_content = base64.b64encode(parquet_binary).decode("utf-8")
 
     url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
     headers = {"Authorization": f"token {token}", "Content-Type": "application/json"}
