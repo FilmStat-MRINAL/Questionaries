@@ -172,7 +172,24 @@ with st.expander("2. Talent Profiles", expanded=True):
         if c_name:
             selected_cast_entries.append({"name": c_name, "is_new": is_new_c, "manual_id": c_id if is_new_c else None})
 
-# --- SECTION 3: STATE-ONLY SHOW COUNTS ---
+# --- SECTION 3: MARKETING & TECHNICAL SPECIFICATIONS ---
+with st.expander("3. Marketing & Technical Specifications", expanded=True):
+    m_col1, m_col2 = st.columns(2)
+    
+    with m_col1:
+        st.markdown("**Campaign Timeline**")
+        teaser_date = st.date_input("Planned Teaser Release Date", value=None)
+        trailer_date = st.date_input("Planned Trailer Release Date", value=None)
+        social_media_start = st.date_input("Social Media Campaign Start Date", value=None)
+    
+    with m_col2:
+        st.markdown("**Budget & Runtime**")
+        runtime_mins = st.number_input("Expected Runtime (in Minutes)", min_value=0, step=1, help="Total length of the movie")
+        social_media_budget = st.number_input("Social Media Marketing Budget (in Crores)", min_value=0.0, step=0.1)
+
+        
+
+# --- SECTION 4: STATE-ONLY SHOW COUNTS ---
 st.subheader("3. Expected Day 1 Show Counts")
 selected_states = st.multiselect("Select States for Release", ALL_STATES)
 
@@ -182,7 +199,7 @@ if selected_states:
     for i, state in enumerate(selected_states):
         show_data[state] = cols[i % 3].number_input(f"Total Shows in {state}", min_value=0, step=1, key=f"our_{state}")
 
-# --- SECTION 4: COMPETITOR LANDSCAPE ---
+# --- SECTION 5: COMPETITOR LANDSCAPE ---
 st.divider()
 st.subheader("4. Competitor Landscape")
 st.caption("Optional: Providing details for competitors helps the model calculate 'Competition Quality'.")
@@ -251,8 +268,7 @@ if st.button("Finalize Inputs for Model"):
         # --- 1. SYNC DIRECTORS ---
         final_director_list = [d_entry["id"] for d_entry in director_entries if pd.notna(d_entry["id"]) and d_entry["id"] != ""]    
 
-        # --- 2. SYNC CAST (Convert to List format with Rank) ---
-        # Using the main_cast_list logic to match your pipeline's needs
+        # --- 2. SYNC CAST ---
         final_cast_list = []
         for entry in selected_cast_entries:
             cid = entry['manual_id'] if entry['is_new'] else extract_id(entry['name'])
@@ -260,15 +276,12 @@ if st.button("Finalize Inputs for Model"):
                 final_cast_list.append(cid)
 
         # --- 3. SYNC DATES ---
-        # Convert Streamlit date to pandas datetime for "cutoff" calculations
         pd_release_date = pd.to_datetime(release_date)
 
         # --- 4. BUILD PIPELINE-READY DICTIONARY ---
-        # This matches the schema expected by your Feature Engineering script
         pipeline_input_dict = {
             "movie_name": [movie_name],
             "primary_lang": [primary_lang],
-            "min_date": [pd_release_date], 
             "release_date": [pd_release_date],
             "Director_list": [final_director_list], 
             "Cast_list": [final_cast_list],     
@@ -277,7 +290,13 @@ if st.button("Finalize Inputs for Model"):
             "is_rerelease": [is_rerelease == "Yes"],
             "is_remake": [is_remake],
             "movie_plot": [movie_plot],
-            # Distribution Data for State-Only Logic
+            # Marketing Timeline
+            "teaser_date": [pd.to_datetime(teaser_date) if teaser_date else pd.NaT],
+            "trailer_date": [pd.to_datetime(trailer_date) if trailer_date else pd.NaT],
+            "social_media_start": [pd.to_datetime(social_media_start) if social_media_start else pd.NaT],
+            "runtime_minutes": [runtime_mins],
+            "social_media_budget_crores": [social_media_budget],            
+            # Distribution Data
             "user_show_distribution": [show_data],
             "competition_details": [competitor_list]
         }
@@ -291,7 +310,6 @@ if st.button("Finalize Inputs for Model"):
                 if repo_response.status_code in [200, 201]:
                     st.balloons()
                     st.success(f"✅ Data for '{movie_name}' successfully sent to the repository!")
-                    st.info("The Data Science team will now process this for prediction.")
                 else:
                     st.error(f"GitHub Sync Failed: {repo_response.json().get('message', 'Unknown Error')}")
             except Exception as e:
@@ -299,4 +317,3 @@ if st.button("Finalize Inputs for Model"):
         
         st.markdown("### 📋 Preview of Data Sent")
         st.dataframe(sync_df)
-
